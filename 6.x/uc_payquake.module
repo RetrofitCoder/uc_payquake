@@ -1,0 +1,179 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Process payments using payQuake.
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function uc_payquake_help($path, $arg) {
+  // TODO: Implement function
+  /* INFO:
+   * The help hook is for displaying helpful messages at the top of pages indicated
+   * by $section to further explain how they work. Adding certain "keywords" to the end of 
+   * a given path (like admin/modules#description) will cause this text to display elsewhere
+   * in the page as well (in this case, in the description section for the given module).
+   */
+  switch ($path) {
+    case 'admin/help#uc_payquake':
+      return t('TODO: Write something useful about how to use this module.');
+    // OPTIONAL: Add additional cases for other paths that should display help text.
+  }
+}
+
+
+/**
+ * Implementation of hook_menu().
+ */
+function uc_payquake_menu() {
+  // TODO: Implement function
+  // This is the minimum information you can provide for a menu item.
+  $items['TODO: Enter path'] = array(
+    'title' => 'TODO: Enter menu item title',
+    'page callback' => 'TODO: Enter callback function',
+    'access arguments' => array('TODO: Enter user permissions'),
+  );
+  // more complex menu item
+  $items['TODO: Enter path'] = array(
+    'title' => 'TODO: Enter menu item title',
+    'description' => 'TODO: Enter description',
+    'page callback' => 'TODO: Enter callback function',
+    'page arguments' => '', // An array of arguments to pass to the page callback function. Integer values pass the corresponding URL component.
+    'access callback' => '', // defaults to user_access()
+    'access arguments' => array('TODO: Enter user permissions'),
+    'weight' => 0,
+    'type' => MENU_NORMAL_ITEM, // One of MENU_NORMAL_ITEM / MENU_CALLBACK / MENU_SUGGESTED_ITEM / MENU_LOCAL_TASK / MENU_DEFAULT_LOCAL_TASK
+    'menu_name' => '', // Menu to place this item in.
+    'title callback' => '', // Function to generate the title, defaults to t(). 
+    'title arguments' => '', // Arguments to send to t() or your custom callback. 
+  );
+  // OPTIONAL: Fill in additional static menu items
+
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function uc_payquake_form_alter(&$form, &$form_state, $form_id) {
+  // TODO: Implement function
+}
+
+
+/**
+ * Implementation of hook_watchdog().
+ */
+function uc_payquake_watchdog($log_entry) {
+  // TODO: Implement function
+}
+
+
+/**
+ * Implementation of hook_access().
+ */
+function uc_payquake_access($op, $node, $account) {
+  // TODO: Implement function
+}
+
+
+/**
+ * Implementation of hook_payment_gateway().
+ */
+function uc_payquake_payment_gateway() {
+  $gateways[] = array(
+    'id' => 'payquake',
+    'title' => t('payQuake'),
+    'description' => t('Process credit card payments using payQuake.'),
+    'settings' => 'uc_payquake_settings_form',
+    'credit' => 'uc_payquake_charge',
+    // TODO: Follow up on what the additional functions would be.  E.g. credit, refund, etc.
+    'credit_txn_types' => array(UC_CREDIT_AUTH_ONLY, UC_CREDIT_PRIOR_AUTH_CAPTURE, UC_CREDIT_AUTH_CAPTURE),
+  );
+
+  return $gateways;
+}
+
+/**
+ * Payment gateway settings form.
+ */
+function uc_payquake_settings_form() {
+    $form['uc_payquake_settings_test'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use test account.'),
+    '#description' => t('In test mode, the payment gateway test account will be used.'),
+    '#default_value' => variable_get('uc_payquake_api_test', FALSE),
+  );
+  $form['uc_payquake_api_log_post_data'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Log POST data.'),
+    '#description' => t('Enable watchdog logging of the POST data when processing payments.<br /><strong>NOTE: card numbers and CVV values are sanitized.</strong>'),
+    '#default_value' => variable_get('uc_payquake_api_log_post_data', FALSE),
+  );
+  $form['uc_payquake_api_username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('payQuake user name'),
+    '#default_value' => variable_get('uc_payquake_api_username', ''),
+    '#required' => TRUE,
+  );
+  $form['uc_payquake_api_password'] = array(
+    '#type' => 'textfield',
+    '#title' => t('payQuake password'),
+    '#default_value' => variable_get('uc_payquake_api_password', ''),
+    '#required' => TRUE,
+  );
+
+  return $form;
+}
+
+/**
+ * Callback for processing a credit card transaction.
+ */
+function uc_payquake_charge($order_id, $amount, $data) {
+  // Build POST data for the transaction.
+  $submit_data = _uc_payquake_build_request($order_id, $amount, $data);
+  if ( FALSE === $submit_data ) {
+    return array('success' => FALSE);
+  }
+
+  // Send transaction request.
+  $response = _uc_payquake_send_request($submit_data);
+  if ( FALSE === $response ) {
+    return array('success' => FALSE);
+  }
+
+  // Process the response and return the results array
+  return _uc_payquake_proecess_response($order_id, $amount, $response);
+}
+
+/**
+ * Implementation of hook_payment_method().
+ */
+function uc_payquake_payment_method() {
+  // TODO: Implement function
+}
+
+/**
+ * Build the form post data to send to payQuake.
+ */
+function _uc_payquake_build_request() {
+  // TODO: Implement function
+}
+
+/**
+ * Send a request to the Chargeback Guardian API and parse the response.
+ */
+function _uc_chargeback_guardian_send_request($data) {
+  // TODO: Implement function
+}
+
+/**
+ * Implementation of hook_uc_checkout_complete().
+ */
+function uc_payquake_uc_checkout_complete($order, $account) {
+  // TODO: Implement function
+}
+

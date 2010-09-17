@@ -1,0 +1,7 @@
+; $Id$
+name = payQuake Payment Gateway
+description = Ubercart module for Process payments using the payQuake Payment Gateway.
+dependencies[] = uc_credit
+package = Ubercart - payment
+core = 6.x
+

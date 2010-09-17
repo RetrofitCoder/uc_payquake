@@ -1,0 +1,58 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ *  Handles installing and uninstalling the Ubercart payQuake Payment Gatewary module.
+ */
+
+/**
+ * Implementation of hook_requirements().
+ */
+function uc_payquake_requirements($phase) {
+  $is_curl_present = function_exists('curl_init');
+
+  $requirements['uc_payquake_curl'] = array(
+    'title' => t('cURL'),
+    'value' => $is_curl_present ? t('Available') : t('Not available'),
+  );
+  if ( false === $is_curl_present ) {
+    $requirements['uc_payquake_curl']['severity'] = REQUIREMENT_ERROR;
+    $requirements['uc_payquake_curl']['description'] = t("payQuake requires the PHP <a href='!curl_url'>cURL</a> library.", array('!curl_url' => 'http://php.net/manual/en/curl.setup.php'));
+  }
+
+  return $requirements;
+}
+
+/**
+ * Implementation of hook_install().
+ */
+function uc_payquake_install() {
+  // TODO: Implement function
+}
+
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function uc_payquake_uninstall() {
+  db_query("DELETE FROM {variable} WHERE name LIKE 'uc_payquake_%%'");
+}
+
+
+/**
+ * Implementation of hook_enable().
+ */
+function uc_payquake_enable() {
+  // TODO: Implement function
+}
+
+
+/**
+ * Implementation of hook_disable().
+ */
+function uc_payquake_disable() {
+  // TODO: Implement function
+}
+
+
