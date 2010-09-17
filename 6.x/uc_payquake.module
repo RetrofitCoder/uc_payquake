@@ -3,7 +3,14 @@
 
 /**
  * @file
- * Process payments using payQuake.
+ * Process payments using payQuake.  This module implements the Quicksale Method
+ * of integrating with payQuake via HTTP POST.
+ *
+ * The Accepturl / Declineurl form fields are not used in the POST since the 
+ * response is parsed by the module.
+ *
+ * API available at https://www.payquake.net/docs/downloads/PQ_integration_guide.pdf
+ *
  */
 
 /**
@@ -101,7 +108,7 @@ function uc_payquake_payment_gateway() {
  * Payment gateway settings form.
  */
 function uc_payquake_settings_form() {
-    $form['uc_payquake_settings_test'] = array(
+  $form['uc_payquake_settings_test'] = array(
     '#type' => 'checkbox',
     '#title' => t('Use test account.'),
     '#description' => t('In test mode, the payment gateway test account will be used.'),
