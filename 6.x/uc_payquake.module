@@ -49,7 +49,11 @@ function uc_payquake_help($path, $arg) {
    */
   switch ($path) {
     case 'admin/help#uc_payquake':
-      return t('TODO: Write something useful about how to use this module.');
+       $message .= '<p>' . t('TODO: Write something useful about how to use this module.'); '</p>';
+       $message .= '<h3>' . t('Testing Credit Card Transactions.') . '</h3>';
+       $message .= '<p>' . t('The CC numbers !visa_number and !mc_number can be used against the testing account.  To enable the module to use the payQuake testing account, go to the settings page and select the "Use Testing Account" checkbox.', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>')) . '</p>';
+       $message .= '<p>' . t('!visa_number will always produce a result of !declined.  !mc_number will always be !accepted as long as the expiration date is in the future', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>', '!declined' => '<code>' . t(UC_PAYQUAKE_RESPONSE_DECLINED) . '</code>', '!accepted' => '<code>' . t(UC_PAYQUAKE_RESPONSE_ACCEPTED) . '</code>')) . '</p>';
+       return $message;
     // OPTIONAL: Add additional cases for other paths that should display help text.
   }
 }
