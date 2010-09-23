@@ -6,10 +6,13 @@
  * Process payments using payQuake.  This module implements the Quicksale Method
  * of integrating with payQuake via HTTP POST.
  *
- * The Accepturl / Declineurl form fields are not used in the POST since the 
+ * The Accepturl / Declineurl form fields are not used in the POST since the
  * response is parsed by the module.
  *
  * API available at https://www.payquake.net/docs/downloads/PQ_integration_guide.pdf
+ *
+ * Derived from uc_paytrace code by David Long <dave@longwaveconsulting.com>
+ * http://drupal.org/project/uc_paytrace
  *
  */
 
@@ -39,24 +42,25 @@ define('UC_PAYQUAKE_RESPONSE_TXN_AUTH_INFO_DELIMITER', ':');
 /**
  * Implementation of hook_help().
  */
-function uc_payquake_help($path, $arg) {
+function uc_payquake_help($path = '', $arg = '') {
   // TODO: Implement function
   /* INFO:
    * The help hook is for displaying helpful messages at the top of pages indicated
-   * by $section to further explain how they work. Adding certain "keywords" to the end of 
+   * by $section to further explain how they work. Adding certain "keywords" to the end of
    * a given path (like admin/modules#description) will cause this text to display elsewhere
    * in the page as well (in this case, in the description section for the given module).
    */
   switch ($path) {
     case 'admin/help#uc_payquake':
-       $message .= '<p>' . t('TODO: Write something useful about how to use this module.'); '</p>';
-       $message .= '<h3>' . t('Testing Credit Card Transactions.') . '</h3>';
-       $message .= '<p>' . t('The CC numbers !visa_number and !mc_number can be used against the testing account.  To enable the module to use the payQuake testing account, go to the settings page and select the "Use Testing Account" checkbox.', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>')) . '</p>';
-       $message .= '<p>' . t('!visa_number will always produce a result of !declined.  !mc_number will always be !accepted as long as the expiration date is in the future', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>', '!declined' => '<code>' . t(UC_PAYQUAKE_RESPONSE_DECLINED) . '</code>', '!accepted' => '<code>' . t(UC_PAYQUAKE_RESPONSE_ACCEPTED) . '</code>')) . '</p>';
-       return $message;
+      $message .= '<p>' . t('TODO: Write something useful about how to use this module.'); '</p>';
+      $message .= '<h3>' . t('Testing Credit Card Transactions.') . '</h3>';
+      $message .= '<p>' . t('The CC numbers !visa_number and !mc_number can be used against the testing account.  To enable the module to use the payQuake testing account, go to the settings page and select the "Use Testing Account" checkbox.', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>')) . '</p>';
+      $message .= '<p>' . t('!visa_number will always produce a result of !declined.  !mc_number will always be !accepted as long as the expiration date is in the future', array('!visa_number' => '<code>4111111111111111</code>', '!mc_number' => '<code>5454545454545454</code>', '!declined' => '<code>' . t(UC_PAYQUAKE_RESPONSE_DECLINED) . '</code>', '!accepted' => '<code>' . t(UC_PAYQUAKE_RESPONSE_ACCEPTED) . '</code>')) . '</p>';
+      return $message;
     // OPTIONAL: Add additional cases for other paths that should display help text.
   }
 }
+
 
 /**
  * Implementation of hook_access().
@@ -76,8 +80,8 @@ function uc_payquake_payment_gateway() {
     'description' => t('Process credit card payments using payQuake.'),
     'settings' => 'uc_payquake_settings_form',
     'credit' => 'uc_payquake_charge',
-    // TODO: Follow up on what the additional functions would be.  E.g. credit, refund, etc.
-    'credit_txn_types' => array(UC_CREDIT_AUTH_ONLY, UC_CREDIT_PRIOR_AUTH_CAPTURE, UC_CREDIT_AUTH_CAPTURE),
+    // TODO: Extend this to include auths, captures, voids, & credits.
+    'credit_txn_types' => array(UC_CREDIT_AUTH_CAPTURE),
   );
 
   return $gateways;
@@ -99,17 +103,32 @@ function uc_payquake_settings_form() {
     '#description' => t('Enable watchdog logging of the POST data when processing payments.<br /><strong>NOTE: card numbers and CVV values are sanitized.</strong>'),
     '#default_value' => variable_get('uc_payquake_api_log_post_data', FALSE),
   );
-  $form['uc_payquake_api_username'] = array(
+  $form['uc_payquake_api_acct_id'] = array(
     '#type' => 'textfield',
-    '#title' => t('payQuake user name'),
-    '#default_value' => variable_get('uc_payquake_api_username', ''),
+    '#title' => t('payQuake account ID'),
+    '#default_value' => variable_get('uc_payquake_api_acct_id', UC_PAYQUAKE_TEST_ACCT_ID),
     '#required' => TRUE,
   );
-  $form['uc_payquake_api_password'] = array(
+  $form['uc_payquake_api_email_from'] = array(
     '#type' => 'textfield',
-    '#title' => t('payQuake password'),
-    '#default_value' => variable_get('uc_payquake_api_password', ''),
-    '#required' => TRUE,
+    '#title' => t('Return address on client email receipt'),
+    '#description' => t('If left blank, the default is <code>null@atsbank.com</code>.'),
+    '#default_value' => variable_get('uc_payquake_api_email_from', ''),
+    '#required' => FALSE,
+  );
+  $form['uc_payquake_api_email_subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t("Subject on client's e-mail receipt"),
+    '#description' => t('If left blank, the default is <code>Payment Receipt #xyz</code>.'),
+    '#default_value' => variable_get('uc_payquake_api_email_subject', ''),
+    '#required' => FALSE,
+  );
+  $form['uc_payquake_api_email_text'] = array(
+    '#type' => 'textarea',
+    '#title' => t("Message body text for client's email receipt."),
+    '#description' => t('Default is a generic receipt message.'),
+    '#default_value' => variable_get('uc_payquake_api_email_text', ''),
+    '#required' => FALSE,
   );
 
   return $form;
@@ -132,34 +151,260 @@ function uc_payquake_charge($order_id, $amount, $data) {
   }
 
   // Process the response and return the results array
-  return _uc_payquake_proecess_response($order_id, $amount, $response);
-}
-
-/**
- * Implementation of hook_payment_method().
- */
-function uc_payquake_payment_method() {
-  // TODO: Implement function
+  return _uc_payquake_process_response($order_id, $amount, $response, $data);
 }
 
 /**
  * Build the form post data to send to payQuake.
  */
-function _uc_payquake_build_request() {
-  // TODO: Implement function
+function _uc_payquake_build_request($order_id, $amount, $data) {
+  // Determine the specific action to build the post data for
+  switch ( strtolower($data['txn_type']) ) {
+    case UC_CREDIT_AUTH_CAPTURE:
+    // case UC_CREDIT_AUTH_ONLY:
+    // case UC_CREDIT_PRIOR_AUTH_CAPTURE:
+      return _uc_payquake_build_sale_request($order_id, $amount, $data);
+      break;
+    // case UC_CREDIT_CREDIT:
+    // case UC_CREDIT_VOID:
+    default:
+      return FALSE;
+  }
 }
 
 /**
- * Send a request to the Chargeback Guardian API and parse the response.
+ * Build the POST data array for sale and auth.
  */
-function _uc_chargeback_guardian_send_request($data) {
-  // TODO: Implement function
+function _uc_payquake_build_sale_request($order_id, $amount, $data) {
+  $order = uc_order_load($order_id);
+
+  $submit_data = array(
+    'action' => 'ns_quicksale_cc',
+    'acctid' => (
+      variable_get('uc_payquake_api_test', FALSE) ?
+      UC_PAYQUAKE_TEST_ACCT_ID :
+      variable_get('uc_payquake_api_acct_id', '')
+    ),
+    'amount' => uc_currency_format($amount, FALSE, FALSE, '.'),
+    'ccname' => $order->billing_first_name . ' ' . $order->billing_last_name,
+    'ccnum' => $order->payment_details['cc_number'],
+    'expmon' => substr('0'. $order->payment_details['cc_exp_month'], -2),
+    'expyear' => $order->payment_details['cc_exp_year'],
+    'ci_billaddr1' =>  $order->billing_street1,
+    'ci_billaddr2' => $order->billing_street2,
+    'ci_billcity' => $order->billing_city,
+    'ci_billstate' => substr(uc_get_zone_code($order->billing_zone), 0, 2),
+    'ci_billzip' => $order->billing_postal_code,
+    // ci_billcountry Consumer country
+    'ci_shipaddr1' => $order->delivery_street1,
+    'ci_shipaddr2' => $order->delivery_street2,
+    'ci_shipcity' => $order->delivery_city,
+    'ci_shipstate' => substr(uc_get_zone_code($order->delivery_zone), 0, 2),
+    'ci_shipzip' => $order->delivery_postal_code,
+    // ci_shipcountry Consumer shipping country
+    // ci_phone Consumer phone number
+    // ci_companyname Your company name
+    // 'authonly'
+    // 'postonly'
+  );
+
+  return $submit_data;
 }
 
 /**
- * Implementation of hook_uc_checkout_complete().
+ * Send a request to payQuake.
  */
-function uc_payquake_uc_checkout_complete($order, $account) {
-  // TODO: Implement function
+function _uc_payquake_send_request($data) {
+  // Format data for the request and later possible logging.
+  $post_data = array();
+  $clean_post_data = array();
+  foreach ($data as $key => $value) {
+    $post_data[] = $key .'='. urlencode($value);
+    // Sanitize the ccnumber / cvv from any information passed to watchdog later.
+    switch ( $key ) {
+      case 'ccnumber':
+        $clean_post_data[] = $key .  '=' . str_repeat('*', 12) . substr($value, -4);
+        break;
+      case 'cvv':
+        $clean_post_data[] = $key .  '=' . str_repeat('*', 2) . substr($value['cvv'], -1);
+        break;
+      default:
+        $clean_post_data[] = $key .'='. urlencode($value);
+        break;
+    }
+  }
+
+  // Send the cURL request and retrieve the response.
+  $curl_options = array(
+    CURLOPT_URL => UC_PAYQUAKE_POST_URI,
+    CURLOPT_VERBOSE => FALSE,
+    CURLOPT_POST => TRUE,
+    CURLOPT_POSTFIELDS => implode('&', $post_data),
+    CURLOPT_RETURNTRANSFER => TRUE,
+    CURLOPT_SSL_VERIFYPEER => FALSE,
+    CURLOPT_NOPROGRESS => TRUE,
+    CURLOPT_FOLLOWLOCATION => FALSE,
+    CURLINFO_HEADER_OUT => TRUE,
+  );
+  $ch = curl_init();
+  curl_setopt_array($ch, $curl_options);
+  $response_string = curl_exec($ch);
+  $error = curl_error($ch);
+  $curl_info = curl_getinfo($ch);
+  curl_close($ch);
+
+  // Log any errors to the watchdog.
+  if ($error) {
+    watchdog('uc_payquake', 'cURL error: @error', array('@error' => $error), WATCHDOG_ERROR);
+    return FALSE;
+  }
+  // Log any debugging information when configured.
+  // Use information with sanitized CC Number and CVV
+  $watchdog_vars = array(
+    '%post' => implode('&', $clean_post_data),
+    '!info' => '<pre>' . check_plain(print_r($curl_info, TRUE)) . '</pre>',
+    '!response' => '<pre>' .  check_plain($response_string). '</pre>',
+  );
+  $watchdog_message = array(
+    t('cURL Call made for payQuake using test mode.'),
+    t('POST data: %post'),
+    t('cURL Transfer Info: !info'),
+    t('cURL Response: !response'),
+  );
+  _uc_payquake_watchdog_post_debug($watchdog_message, $watchdog_vars, __FUNCTION__);
+  
+  // Parse the response string.
+  $response = array();
+  foreach (explode(UC_PAYQUAKE_RESPONSE_DELIMITER, $response_string) as $pair) {
+    list($key, $value) = explode('=', $pair);
+    // The response string could include \r characters, so trim the key and value.
+    $key = trim($key);
+    if ( 0 < strlen($key) ) {
+      $response[$key] = trim($value);
+    }
+  }
+  
+  // Identify if this was an Accept or Decline and store the key holding that information.
+  $status_key = '';
+  if ( UC_PAYQUAKE_RESPONSE_ACCEPTED == $response[UC_PAYQUAKE_RESPONSE_FIELD_STATUS] ) {
+    $status_key = UC_PAYQUAKE_RESPONSE_ACCEPTED;
+  } elseif ( UC_PAYQUAKE_RESPONSE_DECLINED == $response[UC_PAYQUAKE_RESPONSE_FIELD_STATUS] ) {
+    $status_key = UC_PAYQUAKE_RESPONSE_DECLINED;
+  }
+  // Parse the transaction authorization information from the key above.
+  if ( '' !== $status_key ) {
+    $response[UC_PAYQUAKE_RESPONSE_FIELD_TXN_AUTH_INFO] = explode(UC_PAYQUAKE_RESPONSE_TXN_AUTH_INFO_DELIMITER, $response[$status_key]);
+  } else {
+    // Something is amiss with the response.
+    watchdog('uc_payquake', t('Error parsing response.  Accept / Declined status not found.'), array(), WATCHDOG_ERROR);
+    $watchdog_message = array(
+      t('Parsed response: !response_array'),
+      t('Parsed status: @status'),
+    );
+    $watchdog_vars = array(
+      '!response_array' => '<pre>' . check_plain(print_r($response, TRUE)) . '</pre>',
+      '@status' => $response[UC_PAYQUAKE_RESPONSE_FIELD_STATUS],
+    );
+    _uc_payquake_watchdog_post_debug($watchdog_message, $watchdog_vars, __FUNCTION__);
+    
+    return FALSE;
+  }
+
+  return $response;
+}
+
+/**
+ * Parse the response from payQuake.
+ */
+function _uc_payquake_process_response($order_id, $amount, $response, $data) {
+  global $user;
+
+  $watchdog_vars = array(
+    '!response' => '<pre>' . check_plain(print_r($response, TRUE)) . '</pre>',
+  );
+  $watchdog_message = array(
+    t('cURL Response Array passed to ' . __FUNCTION__ . ': !response'),
+  );
+  _uc_payquake_watchdog_post_debug($watchdog_message, $watchdog_vars, __FUNCTION__);
+
+  // Status field contains either Declined or Accepted.
+  if ( UC_PAYQUAKE_RESPONSE_DECLINED == $response[UC_PAYQUAKE_RESPONSE_FIELD_STATUS] ) {
+    // Check if this this was a capture
+    if ($data['txn_type'] == UC_CREDIT_PRIOR_AUTH_CAPTURE) {
+      // For a capture, format a different message.
+      $message = t('Capture failed: @error', array('@error' => $response[UC_PAYQUAKE_RESPONSE_FIELD_TXN_AUTH_INFO][UC_PAYQUAKE_REPSONSE_TXN_AUTH_INFO_DECLINED_TEXT]));
+    }
+    else {
+      $message = t('Credit card payment declined: @error', array('@error' => $response[UC_PAYQUAKE_RESPONSE_FIELD_TXN_AUTH_INFO][UC_PAYQUAKE_REPSONSE_TXN_AUTH_INFO_DECLINED_TEXT]));
+    }
+  }
+  else {
+    // Transaction succeeded.
+    $message_params = array(
+      '@id' => $response[UC_PAYQUAKE_REPSONSE_FIELD_TRANSACTION_ID],
+      '@auth' => $response[UC_PAYQUAKE_REPSONSE_FIELD_AUTH_CODE],
+      '@ref_num' => $response[UC_PAYQUAKE_REPSONSE_FIELD_REFERENCE_NUMBER],
+    );
+    $message = t('Credit card payment processed successfully.<br />Transaction ID: @id<br />Authorization Code: @auth<br />Reference Number: @ref_num', $message_params);
+    $success = TRUE;
+
+    // Log authorization data.
+    if ($data['txn_type'] == UC_CREDIT_AUTH_ONLY) {
+      uc_credit_log_authorization($order_id, $response[UC_PAYQUAKE_REPSONSE_FIELD_TRANSACTION_ID], $amount);
+    }
+    elseif ($data['txn_type'] == UC_CREDIT_PRIOR_AUTH_CAPTURE) {
+      $message_params = array(
+        '@id' => $response[UC_PAYQUAKE_REPSONSE_FIELD_TRANSACTION_ID],
+        '@auth' => $response[UC_PAYQUAKE_REPSONSE_FIELD_AUTH_CODE],
+        '@ref_num' => $response[UC_PAYQUAKE_REPSONSE_FIELD_REFERENCE_NUMBER],
+      );
+      $message_lines = array(
+        'Capture successful.',
+        'Transaction ID: @id',
+        'Authorization Code: @auth',
+        'Reference Number: @ref_num',
+      );
+      $message = t(implode('<br />', $message_lines), $message_params);
+      uc_credit_log_prior_auth_capture($order_id, $response[UC_PAYQUAKE_REPSONSE_FIELD_AUTH_CODE]);
+    }
+    if ( $response[UC_PAYQUAKE_REPSONSE_FIELD_AUTH_CODE] ) {
+      $result_data = array('module' => 'uc_payquake', 'txn_id' => $response['transactionid']);
+    }
+
+    // Build an admin order comment.
+    $comment = $message .'<br />' . t('AVS response: @avs', array('@avs' => $response[UC_PAYQUAKE_RESPONSE_FIELD_TXN_AUTH_INFO][UC_PAYQUAKE_REPSONSE_TXN_AUTH_INFO_AVS_RESULT]));
+    if (variable_get('uc_credit_cvv_enabled', TRUE)) {
+      $comment .= '<br />' . t('CVV response: @cvv', array('@cvv' => $response[UC_PAYQUAKE_RESPONSE_FIELD_TXN_AUTH_INFO][UC_PAYQUAKE_REPSONSE_TXN_AUTH_INFO_CVV_RESULT]));
+    }
+  }
+
+  // Build result array.
+  $result = array(
+    'success' => $success,
+    'comment' => $message,
+    'message' => $message,
+    'uid' => $user->uid,
+    'log_payment' => ($data['txn_type'] != UC_CREDIT_AUTH_ONLY),
+  );
+  if ( $result_data ) {
+    $response['data'] = $result_data;
+  }
+
+  uc_order_comment_save($order_id, $user->uid, $comment, 'admin');
+
+  return $result;
+}
+
+/**
+ * Log any module specific debugging messages.
+ */
+function _uc_payquake_watchdog_post_debug(array $watchdog_message, array $watchdog_vars, $calling_function = NULL) {
+  if (variable_get('uc_payquake_api_log_post_data', FALSE)) {
+    if ( FALSE === is_null($calling_function) ) {
+      $watchdog_message[] = t('Calling function: @func');
+      $watchdog_vars['@func'] =  $calling_function;
+    }
+    watchdog('uc_payquake', implode('<br />', $watchdog_message), $watchdog_vars, WATCHDOG_DEBUG);
+  }
 }
 
